@@ -1,64 +1,59 @@
-import React from 'react';
-import { Zap, Twitter, Instagram, Youtube, Linkedin } from 'lucide-react';
+import { useState } from 'react';
+import { Shield } from 'lucide-react';
+import { BRAND } from '@/lib/constants';
 
-const COLS = [
-  { title: 'Platform', links: ['Studio', 'Helmets', 'Backgrounds', 'API Access', 'Pricing'] },
-  { title: 'Use Cases', links: ['Brand Campaigns', 'Sponsorship Activations', 'Team Posters', 'Fan Engagement', 'Esports Promo'] },
-  { title: 'Company', links: ['About SWAARM®', 'Careers', 'Press Kit', 'Partners', 'Contact'] },
-  { title: 'Resources', links: ['Documentation', 'Tutorials', 'Brand Guidelines', 'Privacy Policy', 'Terms of Service'] },
-];
+export default function Footer() {
+  const [email, setEmail] = useState('');
+  const [done, setDone] = useState(false);
 
-const Footer: React.FC = () => {
+  const subscribe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!/\S+@\S+\.\S+/.test(email)) return;
+    try {
+      await fetch('https://famous.ai/api/crm/6a19ad56183dcb3986199c2f/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, source: 'footer-signup', tags: ['newsletter', 'swaarm-campaign'] })
+      });
+    } catch { /* ignore */ }
+    setDone(true); setEmail('');
+  };
+
   return (
     <footer className="bg-black border-t border-white/10 pt-16 pb-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-8 mb-12">
-          <div className="col-span-2">
+      <div className="max-w-7xl mx-auto px-5">
+        <div className="grid md:grid-cols-4 gap-10">
+          <div className="md:col-span-2">
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center">
-                <Zap className="w-5 h-5 text-black" strokeWidth={3} />
-              </div>
-              <div className="leading-tight">
-                <div className="text-white font-bold text-sm tracking-wider">SWAARM</div>
-                <div className="text-cyan-400 text-[10px] font-medium tracking-widest">AI STUDIO</div>
-              </div>
+              <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center"><Shield className="w-5 h-5 text-black" /></span>
+              <span className="text-lg font-black text-white">{BRAND.name}</span>
             </div>
-            <p className="text-gray-400 text-sm mb-5 max-w-xs">Advanced Armour by SWAARM® — AI-powered sports photo transformation for athletes, brands, and teams.</p>
-            <div className="flex gap-3">
-              {[Twitter, Instagram, Youtube, Linkedin].map((Icon, i) => (
-                <a key={i} href="#" className="w-9 h-9 rounded-lg bg-white/5 hover:bg-cyan-400/20 flex items-center justify-center text-gray-400 hover:text-cyan-400 transition">
-                  <Icon className="w-4 h-4" />
-                </a>
-              ))}
-            </div>
+            <p className="text-white/50 max-w-sm">{BRAND.tagline}. Premium identity-preserving sports campaign compositing for fans and brands.</p>
           </div>
-
-          {COLS.map(col => (
-            <div key={col.title}>
-              <h4 className="text-white font-bold text-sm mb-4">{col.title}</h4>
-              <ul className="space-y-2.5">
-                {col.links.map(link => (
-                  <li key={link}>
-                    <a href="#" className="text-gray-400 hover:text-cyan-400 text-sm transition">{link}</a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          <div>
+            <h4 className="text-white font-bold mb-4">Campaign</h4>
+            <ul className="space-y-2 text-white/50 text-sm">
+              <li><a href="#how" className="hover:text-white">How It Works</a></li>
+              <li><a href="#start" className="hover:text-white">Get Started</a></li>
+              <li><a href="#start" className="hover:text-white">{BRAND.campaign}</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="text-white font-bold mb-4">Stay Updated</h4>
+            {done ? (
+              <p className="text-cyan-400 text-sm">Thanks — you're subscribed!</p>
+            ) : (
+              <form onSubmit={subscribe} className="space-y-2">
+                <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@email.com" className="w-full bg-white/5 border border-white/15 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 focus:border-cyan-400 outline-none" />
+                <button className="w-full bg-cyan-400 text-black font-bold py-2 rounded-lg text-sm hover:bg-cyan-300 transition">Subscribe</button>
+              </form>
+            )}
+          </div>
         </div>
-
-        <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-4">
-          <p className="text-gray-500 text-xs">© 2026 SWAARM® Advanced Armour. All rights reserved.</p>
-          <div className="flex gap-6 text-xs text-gray-500">
-            <a href="#" className="hover:text-cyan-400">Privacy</a>
-            <a href="#" className="hover:text-cyan-400">Terms</a>
-            <a href="#" className="hover:text-cyan-400">Cookies</a>
-            <a href="#" className="hover:text-cyan-400">GDPR</a>
-          </div>
+        <div className="mt-12 pt-6 border-t border-white/10 text-center text-white/30 text-sm">
+          © 2026 {BRAND.name}. All rights reserved.
         </div>
       </div>
     </footer>
   );
-};
-
-export default Footer;
+}

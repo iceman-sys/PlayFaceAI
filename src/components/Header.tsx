@@ -1,60 +1,40 @@
-import React, { useState } from 'react';
-import { Menu, X, Zap } from 'lucide-react';
+import { Shield, LayoutDashboard } from 'lucide-react';
+import { BRAND } from '@/lib/constants';
 
-const Header: React.FC = () => {
-  const [open, setOpen] = useState(false);
+interface Props {
+  onAdmin: () => void;
+  onHome: () => void;
+  isAdmin: boolean;
+}
 
-  const scrollTo = (id: string) => {
-    setOpen(false);
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-  };
-
+export default function Header({ onAdmin, onHome, isAdmin }: Props) {
   return (
-    <header className="sticky top-0 z-50 backdrop-blur-md bg-black/70 border-b border-white/10">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center">
-            <Zap className="w-5 h-5 text-black" strokeWidth={3} />
-          </div>
-          <div className="leading-tight">
-            <div className="text-white font-bold text-sm tracking-wider">SWAARM</div>
-            <div className="text-cyan-400 text-[10px] font-medium tracking-widest">AI STUDIO</div>
-          </div>
-        </div>
-
-        <nav className="hidden md:flex items-center gap-8">
-          <button onClick={() => scrollTo('studio')} className="text-gray-300 hover:text-cyan-400 text-sm font-medium transition">Studio</button>
-          <button onClick={() => scrollTo('styles')} className="text-gray-300 hover:text-cyan-400 text-sm font-medium transition">Helmets</button>
-          <button onClick={() => scrollTo('backgrounds')} className="text-gray-300 hover:text-cyan-400 text-sm font-medium transition">Backgrounds</button>
-          <button onClick={() => scrollTo('gallery')} className="text-gray-300 hover:text-cyan-400 text-sm font-medium transition">Gallery</button>
-          <button onClick={() => scrollTo('pricing')} className="text-gray-300 hover:text-cyan-400 text-sm font-medium transition">Pricing</button>
-        </nav>
-
-        <div className="hidden md:flex items-center gap-3">
-          <button onClick={() => scrollTo('studio')} className="px-5 py-2 rounded-lg bg-gradient-to-r from-cyan-400 to-blue-500 text-black text-sm font-bold hover:opacity-90 transition">
-            Launch Studio
-          </button>
-        </div>
-
-        <button className="md:hidden text-white" onClick={() => setOpen(!open)}>
-          {open ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+    <header className="fixed top-0 inset-x-0 z-50 backdrop-blur-md bg-black/40 border-b border-white/10">
+      <div className="max-w-7xl mx-auto px-5 h-16 flex items-center justify-between">
+        <button onClick={onHome} className="flex items-center gap-2 group">
+          <span className="w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center">
+            <Shield className="w-5 h-5 text-black" />
+          </span>
+          <span className="text-xl font-black tracking-tight text-white">{BRAND.name}</span>
+          <span className="hidden sm:inline text-xs font-medium text-cyan-400 border border-cyan-400/40 rounded px-2 py-0.5 ml-1">
+            CAMPAIGN
+          </span>
         </button>
-      </div>
-
-      {open && (
-        <div className="md:hidden bg-black/95 border-t border-white/10 px-4 py-4 space-y-3">
-          {['studio', 'styles', 'backgrounds', 'gallery', 'pricing'].map(id => (
-            <button key={id} onClick={() => scrollTo(id)} className="block w-full text-left text-gray-300 hover:text-cyan-400 capitalize">
-              {id}
-            </button>
-          ))}
-          <button onClick={() => scrollTo('studio')} className="w-full px-5 py-2 rounded-lg bg-gradient-to-r from-cyan-400 to-blue-500 text-black font-bold">
-            Launch Studio
+        <nav className="flex items-center gap-3">
+          {!isAdmin && (
+            <a href="#start" className="hidden sm:inline text-sm font-semibold text-white/80 hover:text-white transition">
+              Get Started
+            </a>
+          )}
+          <button
+            onClick={isAdmin ? onHome : onAdmin}
+            className="flex items-center gap-2 text-sm font-semibold text-white bg-white/10 hover:bg-white/20 transition rounded-lg px-3 py-2"
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            {isAdmin ? 'Back to Campaign' : 'Admin'}
           </button>
-        </div>
-      )}
+        </nav>
+      </div>
     </header>
   );
-};
-
-export default Header;
+}

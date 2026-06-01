@@ -1,0 +1,26 @@
+{
+  "sceneId": "squad-celebration",
+  "imageWidth": 1203,
+  "imageHeight": 771,
+  "centerFace": {
+    "box": { "x": 528, "y": 91, "width": 147, "height": 170 },
+    "landmarks": {
+      "leftEye": { "x": 575, "y": 156 },
+      "rightEye": { "x": 628, "y": 156 },
+      "nose": { "x": 601, "y": 179 },
+      "mouth": { "x": 601, "y": 214 },
+      "jaw": { "x": 601, "y": 247 }
+    },
+    "score": 0.95
+  },
+  "skinSample": {
+    "x": 565,
+    "y": 262,
+    "width": 74,
+    "height": 34
+  },
+  "helmet": {
+    "widthRatio": 1.38,
+    "topOffsetRatio": 0.52
+  }
+}
