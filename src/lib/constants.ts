@@ -1,37 +1,18 @@
-/** Local campaign assets — served by Vite from public/campaign/ (no CloudFront dependency). */
 export const CAMPAIGN = {
-  scene: '/campaign/afl-group-scene.png',
-  helmet: '/campaign/swaarm-helmet.png',
-  helmetTransparent: '/campaign/swaarm-helmet-transparent.png',
+  name: 'SWAARM x North Melbourne',
+  slug: 'swaarm-roos',
+  tagline: 'Sign with the squad. Suit up in SWAARM Advanced Armour and step into the team photo.',
+  backdropUrl:
+    'https://d64gsuwffb70l.cloudfront.net/6a1b1e6c448faf56fde05b95_1780298025605_bdd2a8da.png',
+  helmetUrl:
+    'https://d64gsuwffb70l.cloudfront.net/6a1b1e6c448faf56fde05b95_1780298057243_8c764e93.webp',
+  heroUrl:
+    'https://d64gsuwffb70l.cloudfront.net/6a1d3179845adaf9c4760e38_1780298235580_8d5184eb.jpg',
+  caption: 'Just a pic of me signing with Tristan and Caleb — my SWAARM Headgear bros!',
+  hashtags: '#SWAARM #AdvancedArmour #SignedWithTheSquad',
 };
 
-export const ASSETS = {
-  hero: 'https://d64gsuwffb70l.cloudfront.net/6a19ad56183dcb3986199c2f_1780067783652_75aa60b3.jpg',
-  team: CAMPAIGN.scene,
-  helmet: CAMPAIGN.helmet,
-  helmetClean: CAMPAIGN.helmetTransparent,
+export const COLORS = {
+  navy: '#0a1f44',
+  blue: '#1e5fc4',
 };
-
-export const BRAND = {
-  name: 'SWAARM',
-  tagline: 'Become Part Of The Team',
-  campaign: 'SWAARM Rugby 2026',
-  caption: 'Just a pic of me signing the song with Tristan and Caleb, my SWAARM Headgear bros!!! #SWAARM #AdvancedArmour',
-};
-
-export const PROCESS_STEPS = [
-  { title: 'Detect & Preserve', desc: 'We detect your face and lock in your real identity — no AI hallucination.' },
-  { title: 'Fit The Headgear', desc: 'The official SWAARM headgear is fitted naturally onto your head.' },
-  { title: 'Drop Into The Team', desc: 'You\'re composited into the team celebration with matched lighting & shadows.' },
-  { title: 'Photoreal Harmonize', desc: 'Final harmonization removes cutout artifacts for a real-photo finish.' }
-];
-
-export const PIPELINE_STAGES = [
-  'Detecting face & landmarks',
-  'Preserving facial identity',
-  'Fitting SWAARM headgear',
-  'Removing background',
-  'Compositing into team photo',
-  'Matching lighting & shadows',
-  'Photorealistic harmonization'
-];

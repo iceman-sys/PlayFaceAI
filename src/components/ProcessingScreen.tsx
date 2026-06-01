@@ -1,41 +1,57 @@
 import { useEffect, useState } from 'react';
-import { Check, Loader2 } from 'lucide-react';
-import { PIPELINE_STAGES } from '@/lib/constants';
 
-export default function ProcessingScreen({ selfie }: { selfie: string }) {
+const STAGES = [
+  'Detecting your face & landmarks',
+  'Removing selfie background',
+  'Fitting your SWAARM headgear',
+  'Inserting you into the squad',
+  'Matching lighting, shadows & grain',
+  'Harmonizing the final composite',
+];
+
+export default function ProcessingScreen() {
+  const [progress, setProgress] = useState(4);
   const [stage, setStage] = useState(0);
 
   useEffect(() => {
-    const timers: number[] = [];
-    PIPELINE_STAGES.forEach((_, i) => {
-      timers.push(window.setTimeout(() => setStage(i + 1), (i + 1) * 2600));
-    });
-    return () => timers.forEach(clearTimeout);
+    const t = setInterval(() => {
+      setProgress((p) => {
+        const next = Math.min(p + Math.random() * 6, 96);
+        setStage(Math.min(Math.floor((next / 100) * STAGES.length), STAGES.length - 1));
+        return next;
+      });
+    }, 700);
+    return () => clearInterval(t);
   }, []);
 
   return (
-    <section className="min-h-screen flex items-center justify-center bg-[#08090d] px-5 pt-16">
-      <div className="max-w-lg w-full text-center">
-        <div className="relative mx-auto w-44 h-44 mb-8">
-          <img src={selfie} alt="" className="w-full h-full object-cover rounded-full border-4 border-cyan-400/30" />
-          <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-cyan-400 animate-spin" />
-        </div>
-        <h2 className="text-3xl font-black text-white">Building your campaign shot</h2>
-        <p className="text-white/50 mt-2 mb-8">Identity-preserving compositing in progress…</p>
-
-        <div className="space-y-3 text-left">
-          {PIPELINE_STAGES.map((s, i) => {
-            const done = i < stage;
-            const active = i === stage;
-            return (
-              <div key={i} className={`flex items-center gap-3 rounded-lg px-4 py-3 border transition ${done ? 'border-cyan-400/40 bg-cyan-400/10' : active ? 'border-white/20 bg-white/5' : 'border-white/5 opacity-50'}`}>
-                {done ? <Check className="w-5 h-5 text-cyan-400" /> : active ? <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" /> : <span className="w-5 h-5 rounded-full border border-white/20" />}
-                <span className={`font-medium ${done || active ? 'text-white' : 'text-white/40'}`}>{s}</span>
-              </div>
-            );
-          })}
+    <div className="text-center py-10">
+      <div className="relative w-40 h-40 mx-auto mb-8">
+        <svg className="w-40 h-40 -rotate-90" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="44" fill="none" stroke="#1e3a6e" strokeWidth="8" />
+          <circle
+            cx="50" cy="50" r="44" fill="none" stroke="#1e5fc4" strokeWidth="8"
+            strokeLinecap="round" strokeDasharray={2 * Math.PI * 44}
+            strokeDashoffset={2 * Math.PI * 44 * (1 - progress / 100)}
+            className="transition-all duration-500"
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-3xl font-black text-white">{Math.round(progress)}%</span>
         </div>
       </div>
-    </section>
+      <h3 className="text-2xl font-bold text-white mb-2">Building your campaign shot…</h3>
+      <p className="text-blue-300 font-medium animate-pulse">{STAGES[stage]}</p>
+      <div className="mt-8 max-w-sm mx-auto space-y-2 text-left">
+        {STAGES.map((s, i) => (
+          <div key={s} className="flex items-center gap-3 text-sm">
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+              i < stage ? 'bg-emerald-500 text-white' : i === stage ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400'
+            }`}>{i < stage ? '✓' : i + 1}</span>
+            <span className={i <= stage ? 'text-white' : 'text-slate-500'}>{s}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

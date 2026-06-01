@@ -64,21 +64,24 @@ async function compressImageElement(
   }
 
   if (blob.size > maxBytes) {
-    throw new Error(
-      `Image still too large after compression (${Math.round(blob.size / 1024)}KB). Try a closer crop or smaller photo.`,
-    );
+    const smaller = await compressImageElement(img, {
+      maxDimension: Math.round(maxDimension * 0.85),
+      maxBytes,
+      quality: 0.7,
+    });
+    return smaller;
   }
 
   return blobToDataUrl(blob);
 }
 
-/** Resize and compress a selfie file so edge/API payloads stay under gateway limits. */
+/** Resize and compress a file so API payloads stay under edge/gateway limits. */
 export async function compressImageFile(
   file: File,
   options: CompressOptions = {},
 ): Promise<string> {
   if (file.size > 10 * 1024 * 1024) {
-    throw new Error('Image must be under 10MB');
+    throw new Error('Image must be under 10MB. Choose a smaller photo or take a new selfie.');
   }
 
   const objectUrl = URL.createObjectURL(file);
@@ -90,7 +93,7 @@ export async function compressImageFile(
   }
 }
 
-/** Compress a data URL (e.g. from camera capture) before sending to edge functions. */
+/** Compress a data URL (e.g. from camera capture). */
 export async function compressDataUrl(
   dataUrl: string,
   options: CompressOptions = {},
@@ -99,6 +102,7 @@ export async function compressDataUrl(
   return compressImageElement(img, options);
 }
 
+/** Rough payload size for logging / guards (base64 data URL length). */
 export function estimatePayloadKb(dataUrl: string): number {
   return Math.round(dataUrl.length / 1024);
 }
