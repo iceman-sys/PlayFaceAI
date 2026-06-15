@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Upload, Camera, X, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { CAMPAIGN } from '@/lib/constants';
+import { CAMPAIGN, resolveCampaignAssetUrl } from '@/lib/constants';
 import { compressDataUrl, compressImageFile } from '@/lib/compressImage';
 import { assertSelfiePayloadOk, friendlyGenerateError } from '@/lib/selfiePayload';
 import ProcessingScreen from './ProcessingScreen';
@@ -120,8 +120,8 @@ export default function UploadFlow() {
       const { data, error } = await supabase.functions.invoke('composite-image', {
         body: {
           selfieDataUrl: selfie,
-          backdropUrl: CAMPAIGN.backdropUrl,
-          helmetUrl: CAMPAIGN.helmetUrl,
+          backdropUrl: resolveCampaignAssetUrl(CAMPAIGN.backdropUrl),
+          helmetUrl: resolveCampaignAssetUrl(CAMPAIGN.helmetUrl),
           fullName,
           submissionId: sub?.id,
         },
