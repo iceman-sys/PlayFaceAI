@@ -1,14 +1,10 @@
+import { Navigate, useLocation } from 'react-router-dom';
+import PrizeLandingPage from './PrizeLandingPage';
 
-import React from 'react';
-import AppLayout from '@/components/AppLayout';
-import { AppProvider } from '@/contexts/AppContext';
+/** Root redirects to prize landing, preserving QR query params */
+export default function Index() {
+  const location = useLocation();
+  return <Navigate to={`/prize${location.search}`} replace />;
+}
 
-const Index: React.FC = () => {
-  return (
-    <AppProvider>
-      <AppLayout />
-    </AppProvider>
-  );
-};
-
-export default Index;
+export { PrizeLandingPage };

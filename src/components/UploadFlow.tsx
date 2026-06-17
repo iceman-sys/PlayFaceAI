@@ -1,9 +1,17 @@
 import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Upload, Camera, X, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
-import { CAMPAIGN, resolveCampaignAssetUrl } from '@/lib/constants';
+import { CAMPAIGN, resolveCampaignAssetUrl, CAMPAIGN_URLS } from '@/lib/constants';
+import {
+  buildReferralCodeFromId,
+  getCampaignSession,
+} from '@/lib/campaignTracking';
 import { compressDataUrl, compressImageFile } from '@/lib/compressImage';
 import { assertSelfiePayloadOk, friendlyGenerateError } from '@/lib/selfiePayload';
+import { generateCompositeImages, sendResultEmail } from '@/lib/compositeApi';
+import { trackFunnelEvent } from '@/lib/funnelAnalytics';
 import ProcessingScreen from './ProcessingScreen';
 import ResultScreen from './ResultScreen';
 
@@ -15,34 +23,60 @@ export default function UploadFlow() {
   const [step, setStep] = useState<Step>('details');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
-  const [socials, setSocials] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [selfie, setSelfie] = useState<string | null>(null);
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
+  const [referralCode, setReferralCode] = useState('');
+  const [prizeEligible, setPrizeEligible] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [compressing, setCompressing] = useState(false);
-  const [resultUrl, setResultUrl] = useState('');
+  const [imageWithHelmetUrl, setImageWithHelmetUrl] = useState('');
+  const [imageWithoutHelmetUrl, setImageWithoutHelmetUrl] = useState('');
   const [emailSent, setEmailSent] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
   const [failed, setFailed] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [streaming, setStreaming] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
 
+  const hasDistinctVariants =
+    Boolean(imageWithHelmetUrl && imageWithoutHelmetUrl) &&
+    imageWithHelmetUrl !== imageWithoutHelmetUrl;
+
   const validateDetails = () => {
     const e: Record<string, string> = {};
     if (!fullName.trim()) e.fullName = 'Required';
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) e.email = 'Valid email required';
+    if (!termsAccepted) e.terms = 'You must accept the competition terms to enter';
     setErrors(e);
     return Object.keys(e).length === 0;
+  };
+
+  const continueToCapture = () => {
+    if (!validateDetails()) return;
+    void trackFunnelEvent('details_submitted');
+    void trackFunnelEvent('terms_accepted');
+    setStep('capture');
   };
 
   const applyCompressedSelfie = async (promise: Promise<string>) => {
     setCompressing(true);
     setFailed('');
     try {
-      const compressed = await promise;
+      let compressed = await promise;
+      try {
+        const { prepareSelfieForGeneration } = await import('@/lib/faceGate');
+        compressed = await prepareSelfieForGeneration(compressed);
+      } catch (gateErr) {
+        if (gateErr instanceof Error && gateErr.message.includes('No face')) {
+          throw gateErr;
+        }
+      }
       assertSelfiePayloadOk(compressed);
       setSelfie(compressed);
+      void trackFunnelEvent('selfie_uploaded');
     } catch (e) {
       setFailed(e instanceof Error ? e.message : 'Could not process image.');
       setSelfie(null);
@@ -94,8 +128,31 @@ export default function UploadFlow() {
     await applyCompressedSelfie(compressDataUrl(canvas.toDataURL('image/jpeg', 0.88)));
   };
 
+  const deliverEmail = async (
+    withUrl: string,
+    withoutUrl: string,
+    shareCaption: string,
+  ): Promise<boolean> => {
+    setEmailSending(true);
+    try {
+      const sent = await sendResultEmail({
+        email,
+        fullName,
+        imageWithHelmetUrl: withUrl,
+        imageWithoutHelmetUrl: withoutUrl,
+        shareCaption,
+      });
+      setEmailSent(sent);
+      if (sent) toast.success('Check your inbox for both images');
+      else toast.error('Email could not be sent — use download or tap the mail icon to retry');
+      return sent;
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
   const generate = async () => {
-    if (!selfie) return;
+    if (!selfie || !termsAccepted) return;
     setFailed('');
     try {
       assertSelfiePayloadOk(selfie);
@@ -105,74 +162,135 @@ export default function UploadFlow() {
     }
 
     setStep('processing');
+    void trackFunnelEvent('generation_started');
+
+    const termsAcceptedAt = new Date().toISOString();
+    const tracking = getCampaignSession();
+
     try {
-      const { data: sub } = await supabase
-        .from('submissions')
-        .insert({
-          full_name: fullName,
-          email,
-          socials,
-          status: 'processing',
-        })
-        .select()
-        .single();
+      const extendedRow = {
+        full_name: fullName.trim(),
+        email: email.trim(),
+        status: 'processing' as const,
+        campaign_source: tracking.campaign_source,
+        prize_section_viewed: tracking.prize_section_viewed,
+        terms_accepted_at: termsAcceptedAt,
+        referred_by_submission_id: tracking.referred_by_submission_id ?? null,
+      };
 
-      const { data, error } = await supabase.functions.invoke('composite-image', {
-        body: {
-          selfieDataUrl: selfie,
-          backdropUrl: resolveCampaignAssetUrl(CAMPAIGN.backdropUrl),
-          helmetUrl: resolveCampaignAssetUrl(CAMPAIGN.helmetUrl),
-          fullName,
-          submissionId: sub?.id,
-        },
-      });
+      let sub: { id: string } | null = null;
+      let insertError: { message: string } | null = null;
 
-      if (error) throw error;
-      if (data?.error || !data?.resultUrl) {
-        throw new Error(typeof data?.error === 'string' ? data.error : 'Generation failed');
+      const extended = await supabase.from('submissions').insert(extendedRow).select().single();
+      sub = extended.data;
+      insertError = extended.error;
+
+      if (insertError?.message?.includes('column')) {
+        const minimal = await supabase
+          .from('submissions')
+          .insert({ full_name: fullName.trim(), email: email.trim(), status: 'processing' })
+          .select()
+          .single();
+        sub = minimal.data;
+        insertError = minimal.error;
       }
 
-      setResultUrl(data.resultUrl);
-      fetch('https://famous.ai/api/crm/6a1d3179845adaf9c4760e38/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          name: fullName,
-          source: 'campaign-signup',
-          tags: ['swaarm-campaign'],
-        }),
-      }).catch(() => {});
+      if (insertError) throw insertError;
+
+      const subId = sub?.id ?? null;
+      setSubmissionId(subId);
+
+      const code = subId ? buildReferralCodeFromId(subId) : '';
+      setReferralCode(code);
+
+      const result = await generateCompositeImages({
+        selfieDataUrl: selfie,
+        backdropUrl: resolveCampaignAssetUrl(CAMPAIGN.backdropUrl),
+        helmetUrl: resolveCampaignAssetUrl(CAMPAIGN.helmetUrl),
+        fullName: fullName.trim(),
+        email: email.trim(),
+        submissionId: subId ?? undefined,
+      });
+
+      setImageWithHelmetUrl(result.image_with_helmet_url);
+      setImageWithoutHelmetUrl(result.image_without_helmet_url);
+
+      const prizeEnteredAt = new Date().toISOString();
+      const updatePayload = {
+        status: 'completed' as const,
+        result_url: result.image_with_helmet_url,
+        image_with_helmet_url: result.image_with_helmet_url,
+        image_without_helmet_url: result.image_without_helmet_url,
+        referral_code: code || null,
+        prize_eligible: true,
+        prize_entered_at: prizeEnteredAt,
+        terms_accepted_at: termsAcceptedAt,
+      };
+
+      const { error: updateError } = await supabase
+        .from('submissions')
+        .update(updatePayload)
+        .eq('id', subId);
+
+      if (updateError?.message?.includes('column')) {
+        await supabase
+          .from('submissions')
+          .update({ status: 'completed', result_url: result.image_with_helmet_url })
+          .eq('id', subId);
+      }
+
+      setPrizeEligible(true);
+      void trackFunnelEvent('generation_completed', { submissionId: subId });
+      void trackFunnelEvent('prize_entered', { submissionId: subId });
+
+      void deliverEmail(
+        result.image_with_helmet_url,
+        result.image_without_helmet_url,
+        result.shareCaption,
+      );
+
       setStep('result');
     } catch (err) {
+      void trackFunnelEvent('generation_failed', {
+        submissionId,
+        payload: { error: err instanceof Error ? err.message : 'unknown' },
+      });
+      if (submissionId) {
+        await supabase.from('submissions').update({ status: 'failed' }).eq('id', submissionId);
+      }
       setFailed(friendlyGenerateError(err));
       setStep('capture');
     }
   };
 
-  const sendEmail = async () => {
-    await supabase.functions.invoke('send-result-email', {
-      body: { email, fullName, resultUrl },
-    });
-    setEmailSent(true);
+  const resendEmail = async () => {
+    if (!imageWithHelmetUrl) return;
+    await deliverEmail(imageWithHelmetUrl, imageWithoutHelmetUrl || imageWithHelmetUrl, '');
   };
 
-  const restart = () => {
-    setStep('details');
+  const newSelfie = () => {
+    setStep('capture');
     setSelfie(null);
-    setResultUrl('');
+    setImageWithHelmetUrl('');
+    setImageWithoutHelmetUrl('');
     setEmailSent(false);
     setFailed('');
   };
 
   return (
-    <div id="join" className="bg-[#0a1f44]/80 backdrop-blur rounded-3xl ring-1 ring-white/10 p-6 sm:p-10 shadow-2xl">
+    <div
+      className={`w-full mx-auto bg-[#0a1f44]/80 backdrop-blur rounded-3xl ring-1 ring-white/10 p-6 sm:p-10 shadow-2xl ${
+        step === 'result' ? 'max-w-6xl' : 'max-w-2xl'
+      }`}
+    >
       {step === 'details' && (
         <div>
-          <h2 className="text-2xl font-black text-white mb-1">Get on the team sheet</h2>
-          <p className="text-slate-400 mb-6 text-sm">Enter your details to start your SWAARM signing photo.</p>
+          <h2 className="text-2xl font-black text-white mb-1">Enter the chorus</h2>
+          <p className="text-slate-400 mb-6 text-sm">
+            Your email is where we&apos;ll send your team-song image and prize notifications.
+          </p>
           <div className="space-y-4">
-            <Field label="Full Name" error={errors.fullName}>
+            <Field label="Full name" error={errors.fullName}>
               <input
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
@@ -189,17 +307,31 @@ export default function UploadFlow() {
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-blue-500 outline-none"
               />
             </Field>
-            <Field label="Social handles (optional)">
-              <input
-                value={socials}
-                onChange={(e) => setSocials(e.target.value)}
-                placeholder="@yourhandle"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-blue-500 outline-none"
-              />
-            </Field>
+            <div>
+              <label className="flex items-start gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => setTermsAccepted(e.target.checked)}
+                  className="mt-1 w-4 h-4 rounded border-white/20 bg-white/5 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-slate-300 leading-relaxed">
+                  I agree to the{' '}
+                  <Link
+                    to={CAMPAIGN_URLS.terms}
+                    target="_blank"
+                    className="text-blue-300 hover:text-white underline-offset-2 hover:underline"
+                  >
+                    competition terms & conditions
+                  </Link>{' '}
+                  and confirm I am 18+ and eligible to enter.
+                </span>
+              </label>
+              {errors.terms && <p className="text-red-400 text-xs mt-1">{errors.terms}</p>}
+            </div>
           </div>
           <button
-            onClick={() => validateDetails() && setStep('capture')}
+            onClick={continueToCapture}
             className="mt-6 w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition"
           >
             Continue <ArrowRight size={18} />
@@ -217,7 +349,7 @@ export default function UploadFlow() {
           </button>
           <h2 className="text-2xl font-black text-white mb-1">Add your selfie</h2>
           <p className="text-slate-400 mb-6 text-sm">
-            Face the camera, good lighting, no sunglasses. Large photos are optimized automatically.
+            Face the camera, good lighting, no sunglasses.
           </p>
 
           {failed && (
@@ -265,7 +397,7 @@ export default function UploadFlow() {
                 onClick={() => void generate()}
                 className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition"
               >
-                Generate my campaign shot <ArrowRight size={18} />
+                SWAARM me into the chorus <ArrowRight size={18} />
               </button>
             </div>
           ) : (
@@ -287,7 +419,7 @@ export default function UploadFlow() {
               >
                 <Upload className="mx-auto text-blue-400 mb-3" size={36} />
                 <p className="text-white font-semibold">Drag & drop your selfie</p>
-                <p className="text-slate-500 text-sm">JPG or PNG, up to 10MB — we resize automatically</p>
+                <p className="text-slate-500 text-sm">JPG or PNG — we resize automatically</p>
                 <input
                   ref={fileRef}
                   type="file"
@@ -314,12 +446,18 @@ export default function UploadFlow() {
       {step === 'processing' && <ProcessingScreen />}
       {step === 'result' && (
         <ResultScreen
-          resultUrl={resultUrl}
+          imageWithHelmetUrl={imageWithHelmetUrl}
+          imageWithoutHelmetUrl={imageWithoutHelmetUrl || imageWithHelmetUrl}
           email={email}
           fullName={fullName}
-          onRestart={restart}
-          onEmail={sendEmail}
+          submissionId={submissionId}
+          referralCode={referralCode}
+          prizeEligible={prizeEligible}
+          onNewSelfie={newSelfie}
+          onResendEmail={resendEmail}
           emailSent={emailSent}
+          emailSending={emailSending}
+          hasDistinctVariants={hasDistinctVariants}
         />
       )}
     </div>
