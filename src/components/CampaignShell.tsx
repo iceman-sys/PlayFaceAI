@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Shield, LogOut, Lock } from 'lucide-react';
 import { initCampaignTracking } from '@/lib/campaignTracking';
-import { CAMPAIGN_URLS } from '@/lib/constants';
+import { CAMPAIGN, CAMPAIGN_URLS } from '@/lib/constants';
 import SignInModal from './SignInModal';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -12,7 +12,7 @@ interface Props {
   showJoinCta?: boolean;
 }
 
-export default function CampaignShell({ children, showJoinCta = true }: Props) {
+export default function CampaignShell({ children, showJoinCta = false }: Props) {
   const [showAuth, setShowAuth] = useState(false);
   const { user, signOut, loading } = useAuth();
   const location = useLocation();
@@ -49,7 +49,7 @@ export default function CampaignShell({ children, showJoinCta = true }: Props) {
                 to={CAMPAIGN_URLS.create}
                 className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg font-semibold transition text-sm"
               >
-                Join the chorus
+                {CAMPAIGN.ctaLabel}
               </Link>
             )}
             {isAdmin ? (
@@ -76,13 +76,23 @@ export default function CampaignShell({ children, showJoinCta = true }: Props) {
 
       {children}
 
-      <footer className="border-t border-white/10 py-8 text-center text-slate-500 text-xs">
-        <p>© 2026 SWAARM Advanced Armour · North Melbourne Football Club partner</p>
-        <p className="mt-2">
-          <Link to={CAMPAIGN_URLS.terms} className="text-slate-400 hover:text-white underline-offset-2 hover:underline">
+      <footer className="border-t border-white/10 py-8 px-4">
+        <div className="max-w-3xl mx-auto flex flex-col items-center gap-4 text-center">
+          <img
+            src={CAMPAIGN.logoUrl}
+            alt="North Melbourne and SWAARM"
+            className="h-14 sm:h-16 w-auto object-contain"
+          />
+          <p className="text-slate-400 text-xs sm:text-sm">
+            2026 SWAARM Headgear · North Melbourne Football Club Partner
+          </p>
+          <Link
+            to={CAMPAIGN_URLS.terms}
+            className="text-slate-500 hover:text-white text-xs underline-offset-2 hover:underline"
+          >
             Competition terms
           </Link>
-        </p>
+        </div>
       </footer>
     </div>
   );
@@ -105,7 +115,7 @@ export function AdminGate({
         <Lock size={28} />
       </div>
       <h1 className="text-2xl font-black text-white mb-2">Admin access required</h1>
-      <p className="text-slate-400 mb-6">Sign in to view submissions, referrals, and export draw data.</p>
+      <p className="text-slate-400 mb-6">Sign in to view submissions and export draw data.</p>
       <button
         onClick={onSignIn}
         className="bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-xl font-bold transition"

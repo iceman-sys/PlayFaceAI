@@ -1,13 +1,11 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Upload, Camera, X, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
-import { CAMPAIGN, resolveCampaignAssetUrl, CAMPAIGN_URLS } from '@/lib/constants';
-import {
-  buildReferralCodeFromId,
-  getCampaignSession,
-} from '@/lib/campaignTracking';
+import { buildShareCaption, CAMPAIGN, resolveCampaignAssetUrl, CAMPAIGN_URLS } from '@/lib/constants';
+import { buildReferralCodeFromId, getCampaignSession } from '@/lib/campaignTracking';
+import { sanitizeEmail } from '@/lib/submissions';
 import { compressDataUrl, compressImageFile } from '@/lib/compressImage';
 import { assertSelfiePayloadOk, friendlyGenerateError } from '@/lib/selfiePayload';
 import { generateCompositeImages, sendResultEmail } from '@/lib/compositeApi';
@@ -15,21 +13,27 @@ import { trackFunnelEvent } from '@/lib/funnelAnalytics';
 import ProcessingScreen from './ProcessingScreen';
 import ResultScreen from './ResultScreen';
 
-type Step = 'details' | 'capture' | 'processing' | 'result';
+export type FlowStep = 'details' | 'capture' | 'processing' | 'result';
 
 const CAMERA_MAX_DIMENSION = 1280;
 
-export default function UploadFlow() {
-  const [step, setStep] = useState<Step>('details');
+interface UploadFlowProps {
+  onStepChange?: (step: FlowStep) => void;
+}
+
+export default function UploadFlow({ onStepChange }: UploadFlowProps) {
+  const [step, setStep] = useState<FlowStep>('details');
+
+  useEffect(() => {
+    onStepChange?.(step);
+  }, [step, onStepChange]);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [offerOptIn, setOfferOptIn] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [selfie, setSelfie] = useState<string | null>(null);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
-  const [referralCode, setReferralCode] = useState('');
-  const [prizeEligible, setPrizeEligible] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
   const [compressing, setCompressing] = useState(false);
   const [imageWithHelmetUrl, setImageWithHelmetUrl] = useState('');
   const [imageWithoutHelmetUrl, setImageWithoutHelmetUrl] = useState('');
@@ -48,7 +52,8 @@ export default function UploadFlow() {
   const validateDetails = () => {
     const e: Record<string, string> = {};
     if (!fullName.trim()) e.fullName = 'Required';
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) e.email = 'Valid email required';
+    const cleanEmail = sanitizeEmail(email);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) e.email = 'Valid email required';
     if (!termsAccepted) e.terms = 'You must accept the competition terms to enter';
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -56,6 +61,7 @@ export default function UploadFlow() {
 
   const continueToCapture = () => {
     if (!validateDetails()) return;
+    setEmail(sanitizeEmail(email));
     void trackFunnelEvent('details_submitted');
     void trackFunnelEvent('terms_accepted');
     setStep('capture');
@@ -168,14 +174,17 @@ export default function UploadFlow() {
     const tracking = getCampaignSession();
 
     try {
+      const cleanEmail = sanitizeEmail(email);
       const extendedRow = {
         full_name: fullName.trim(),
-        email: email.trim(),
+        email: cleanEmail,
         status: 'processing' as const,
         campaign_source: tracking.campaign_source,
         prize_section_viewed: tracking.prize_section_viewed,
         terms_accepted_at: termsAcceptedAt,
         referred_by_submission_id: tracking.referred_by_submission_id ?? null,
+        swaarm_offer_opt_in: offerOptIn,
+        prize_eligible: false,
       };
 
       let sub: { id: string } | null = null;
@@ -188,7 +197,7 @@ export default function UploadFlow() {
       if (insertError?.message?.includes('column')) {
         const minimal = await supabase
           .from('submissions')
-          .insert({ full_name: fullName.trim(), email: email.trim(), status: 'processing' })
+          .insert({ full_name: fullName.trim(), email: cleanEmail, status: 'processing' })
           .select()
           .single();
         sub = minimal.data;
@@ -201,30 +210,28 @@ export default function UploadFlow() {
       setSubmissionId(subId);
 
       const code = subId ? buildReferralCodeFromId(subId) : '';
-      setReferralCode(code);
 
       const result = await generateCompositeImages({
         selfieDataUrl: selfie,
         backdropUrl: resolveCampaignAssetUrl(CAMPAIGN.backdropUrl),
         helmetUrl: resolveCampaignAssetUrl(CAMPAIGN.helmetUrl),
         fullName: fullName.trim(),
-        email: email.trim(),
+        email: cleanEmail,
         submissionId: subId ?? undefined,
       });
 
       setImageWithHelmetUrl(result.image_with_helmet_url);
       setImageWithoutHelmetUrl(result.image_without_helmet_url);
 
-      const prizeEnteredAt = new Date().toISOString();
       const updatePayload = {
         status: 'completed' as const,
         result_url: result.image_with_helmet_url,
         image_with_helmet_url: result.image_with_helmet_url,
         image_without_helmet_url: result.image_without_helmet_url,
         referral_code: code || null,
-        prize_eligible: true,
-        prize_entered_at: prizeEnteredAt,
+        prize_eligible: false,
         terms_accepted_at: termsAcceptedAt,
+        swaarm_offer_opt_in: offerOptIn,
       };
 
       const { error: updateError } = await supabase
@@ -239,14 +246,13 @@ export default function UploadFlow() {
           .eq('id', subId);
       }
 
-      setPrizeEligible(true);
+      setEmail(cleanEmail);
       void trackFunnelEvent('generation_completed', { submissionId: subId });
-      void trackFunnelEvent('prize_entered', { submissionId: subId });
 
       void deliverEmail(
         result.image_with_helmet_url,
         result.image_without_helmet_url,
-        result.shareCaption,
+        result.shareCaption || buildShareCaption(),
       );
 
       setStep('result');
@@ -265,7 +271,11 @@ export default function UploadFlow() {
 
   const resendEmail = async () => {
     if (!imageWithHelmetUrl) return;
-    await deliverEmail(imageWithHelmetUrl, imageWithoutHelmetUrl || imageWithHelmetUrl, '');
+    await deliverEmail(
+      imageWithHelmetUrl,
+      imageWithoutHelmetUrl || imageWithHelmetUrl,
+      buildShareCaption(),
+    );
   };
 
   const newSelfie = () => {
@@ -285,9 +295,9 @@ export default function UploadFlow() {
     >
       {step === 'details' && (
         <div>
-          <h2 className="text-2xl font-black text-white mb-1">Enter the chorus</h2>
+          <h2 className="text-2xl font-black text-white mb-1">SWAARM in the Chorus</h2>
           <p className="text-slate-400 mb-6 text-sm">
-            Your email is where we&apos;ll send your team-song image and prize notifications.
+            Your email will be used to send your team-song photo and notify of prize winners.
           </p>
           <div className="space-y-4">
             <Field label="Full name" error={errors.fullName}>
@@ -304,6 +314,7 @@ export default function UploadFlow() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@email.com"
                 type="email"
+                autoComplete="email"
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:border-blue-500 outline-none"
               />
             </Field>
@@ -329,6 +340,19 @@ export default function UploadFlow() {
               </label>
               {errors.terms && <p className="text-red-400 text-xs mt-1">{errors.terms}</p>}
             </div>
+            <div>
+              <label className="flex items-start gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={offerOptIn}
+                  onChange={(e) => setOfferOptIn(e.target.checked)}
+                  className="mt-1 w-4 h-4 rounded border-white/20 bg-white/5 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-slate-300 leading-relaxed">
+                  I would like to receive a once off special offer from SWAARM Headgear
+                </span>
+              </label>
+            </div>
           </div>
           <button
             onClick={continueToCapture}
@@ -347,9 +371,9 @@ export default function UploadFlow() {
           >
             <ArrowLeft size={16} /> Back
           </button>
-          <h2 className="text-2xl font-black text-white mb-1">Add your selfie</h2>
+          <h2 className="text-2xl font-black text-white mb-1">Upload your selfie</h2>
           <p className="text-slate-400 mb-6 text-sm">
-            Face the camera, good lighting, no sunglasses.
+            Take a selfie or upload an image — face the camera, good lighting, no sunglasses.
           </p>
 
           {failed && (
@@ -402,41 +426,32 @@ export default function UploadFlow() {
             </div>
           ) : (
             <div className="space-y-3">
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOver(false);
-                  const file = e.dataTransfer.files?.[0];
-                  if (file) handleFile(file);
-                }}
+              <button
+                type="button"
                 onClick={() => fileRef.current?.click()}
-                className={`cursor-pointer border-2 border-dashed rounded-2xl py-12 text-center transition ${dragOver ? 'border-blue-500 bg-blue-500/10' : 'border-white/20 hover:border-white/40'}`}
+                className="w-full border-2 border-dashed border-white/20 hover:border-blue-500 rounded-2xl py-12 text-center transition"
               >
                 <Upload className="mx-auto text-blue-400 mb-3" size={36} />
-                <p className="text-white font-semibold">Drag & drop your selfie</p>
-                <p className="text-slate-500 text-sm">JPG or PNG — we resize automatically</p>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  hidden
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleFile(file);
-                    e.target.value = '';
-                  }}
-                />
-              </div>
+                <p className="text-white font-semibold">Upload image or take a selfie</p>
+                <p className="text-slate-500 text-sm mt-1">JPG or PNG — works best on your phone</p>
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                capture="user"
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFile(file);
+                  e.target.value = '';
+                }}
+              />
               <button
                 onClick={startCamera}
                 className="w-full bg-white/10 hover:bg-white/20 text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 transition"
               >
-                <Camera size={18} /> Use camera instead
+                <Camera size={18} /> Take selfie with camera
               </button>
             </div>
           )}
@@ -451,8 +466,6 @@ export default function UploadFlow() {
           email={email}
           fullName={fullName}
           submissionId={submissionId}
-          referralCode={referralCode}
-          prizeEligible={prizeEligible}
           onNewSelfie={newSelfie}
           onResendEmail={resendEmail}
           emailSent={emailSent}

@@ -72,7 +72,18 @@ async function invokeComposite(body: CompositeRequest): Promise<RawCompositeResp
   const { data, error } = await supabase.functions.invoke('composite-image', { body });
 
   if (error) {
-    throw new Error(error.message || 'Generation failed — is composite-image deployed?');
+    const ctx = error as { context?: Response; message?: string };
+    let detail = error.message || 'Generation failed — is composite-image deployed?';
+    try {
+      const body = await ctx.context?.json();
+      if (body && typeof body === 'object') {
+        const record = body as { error?: string; message?: string; code?: string };
+        detail = record.error || record.message || record.code || detail;
+      }
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(detail);
   }
 
   const payload = (data ?? {}) as RawCompositeResponse;

@@ -1,12 +1,35 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import CampaignShell from '@/components/CampaignShell';
-import UploadFlow from '@/components/UploadFlow';
+import UploadFlow, { type FlowStep } from '@/components/UploadFlow';
 import { CAMPAIGN_URLS } from '@/lib/constants';
 import { trackFunnelEvent } from '@/lib/funnelAnalytics';
 
+const PAGE_HEADERS: Record<FlowStep, { title: string; subtitle: string }> = {
+  details: {
+    title: 'Create your Team-Song Photo',
+    subtitle: 'Enter your details and click continue to upload a selfie and generate your photo.',
+  },
+  capture: {
+    title: 'Create your Team-Song Photo',
+    subtitle: 'Enter your details and click continue to upload a selfie and generate your photo.',
+  },
+  processing: {
+    title: 'Create your Team-Song Photo',
+    subtitle: 'We\'re generating your team-song photo…',
+  },
+  result: {
+    title: 'Here is your Team-Song Photo',
+    subtitle:
+      'Toggle between one with you wearing SWAARM Headgear and one without. Share and download both.',
+  },
+};
+
 export default function CreatePage() {
+  const [flowStep, setFlowStep] = useState<FlowStep>('details');
+  const header = PAGE_HEADERS[flowStep];
+
   useEffect(() => {
     void trackFunnelEvent('create_page_view');
   }, []);
@@ -21,13 +44,13 @@ export default function CreatePage() {
           <ArrowLeft size={16} /> Back to prizes
         </Link>
         <div className="mb-6">
-          <p className="text-xs font-bold uppercase tracking-widest text-blue-300 mb-1">AI image platform</p>
-          <h1 className="text-3xl font-black text-white">Create your chorus shot</h1>
-          <p className="text-slate-400 mt-2 text-sm">
-            Enter your details, accept the competition terms, and upload a selfie to generate your image.
+          <p className="text-xs font-bold uppercase tracking-widest text-blue-300 mb-1">
+            AI image platform
           </p>
+          <h1 className="text-3xl font-black text-white">{header.title}</h1>
+          <p className="text-slate-400 mt-2 text-sm">{header.subtitle}</p>
         </div>
-        <UploadFlow />
+        <UploadFlow onStepChange={setFlowStep} />
       </section>
     </CampaignShell>
   );

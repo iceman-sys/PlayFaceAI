@@ -28,4 +28,5 @@ tmp-test-output
 *.sw?
 supabase/
 public/models/
+public/campaign/
 dist/

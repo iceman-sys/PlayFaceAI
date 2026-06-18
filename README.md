@@ -61,7 +61,7 @@ Generation runs on **Supabase Edge Functions** (not your local IP) — works reg
 
 Upload your locker-room scene + SWAARM helmet to Storage:
 
-**Option A — Dashboard:** Storage → `campaign-assets` bucket → upload `afl-group-scene.png` and `swaarm-helmet.png`
+**Option A — Dashboard:** Storage → `campaign-assets` bucket → upload `afl-group-scene.jpeg` (~4 MB) and `swaarm-helmet.png`. Do **not** upload the 31 MB `afl-group-scene.png` — it will crash the edge function.
 
 **Option B — Script:**
 ```bash
@@ -75,9 +75,11 @@ Dashboard → **Edge Functions → Secrets**:
 ```
 GEMINI_API_KEY=your_key_from_aistudio.google.com
 GEMINI_HARMONIZE=true
-RESEND_API_KEY=re_...                    # optional
-RESEND_FROM=SWAARM <campaign@domain.com>  # optional
+RESEND_API_KEY=re_...                    # required for email delivery
+RESEND_FROM=SWAARM in the Chorus <promotion@swaarmglobal.com>  # optional; this is the code default
 ```
+
+`promotion@swaarmglobal.com` must be on a domain verified in [Resend](https://resend.com/domains). If unset, `send-result-email` uses that address by default.
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically.
 
@@ -114,7 +116,7 @@ Prize draw: use **Prize draw export** CSV (filters `prize_eligible = true`).
 
 Place in `public/campaign/` and upload to Storage bucket `campaign-assets`:
 
-- `afl-group-scene.png` — locker room team song (seven players)
+- `afl-group-scene.jpeg` — locker room team song (~4 MB, used by Gemini)
 - `swaarm-helmet.png` — SWAARM scrum cap
 
 ```bash

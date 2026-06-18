@@ -25,6 +25,16 @@ export function friendlyGenerateError(err: unknown): string {
   if (isPayloadTooLargeError(message)) {
     return 'Your photo was too large to upload. We compressed it automatically — please try again with a smaller image or retake your selfie.';
   }
+  if (
+    message.includes('WORKER_RESOURCE_LIMIT') ||
+    message.includes('not having enough compute resources') ||
+    message.includes('Scene asset too large')
+  ) {
+    return 'Image generation timed out on the server. The campaign scene file may be too large — ensure afl-group-scene.jpeg (~4 MB) is uploaded to Supabase Storage, not the 31 MB PNG. Then try again.';
+  }
+  if (message.includes('Asset load failed') && message.includes('afl-group-scene')) {
+    return 'Campaign scene image missing from storage. Upload afl-group-scene.jpeg to the campaign-assets bucket (npm run upload:campaign), then try again.';
+  }
   if (message.includes('compression') || message.includes('under 10MB')) {
     return message;
   }

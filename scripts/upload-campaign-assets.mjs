@@ -26,9 +26,11 @@ function loadEnv() {
 }
 
 const ASSETS = [
-  { file: 'afl-group-scene.png', dest: 'afl-group-scene.png' },
-  { file: 'swaarm-helmet.png', dest: 'swaarm-helmet.png' },
+  { file: 'afl-group-scene.jpeg', dest: 'afl-group-scene.jpeg', contentType: 'image/jpeg' },
+  { file: 'swaarm-helmet.png', dest: 'swaarm-helmet.png', contentType: 'image/png' },
+  { file: 'swaarm-footer-logo.png', dest: 'swaarm-footer-logo.png', contentType: 'image/png' },
 ];
+// Do NOT upload afl-group-scene.png (31 MB) — it exceeds Supabase Edge Function memory limits.
 
 loadEnv();
 
@@ -48,11 +50,11 @@ if (!serviceKey) {
   process.exit(1);
 }
 
-for (const { file, dest } of ASSETS) {
+for (const { file, dest, contentType } of ASSETS) {
   const localPath = path.join(root, 'public', 'campaign', file);
   if (!fs.existsSync(localPath)) {
-    console.error(`Missing ${localPath}`);
-    process.exit(1);
+    console.warn(`Skipping missing ${localPath}`);
+    continue;
   }
 
   const body = fs.readFileSync(localPath);
@@ -67,7 +69,7 @@ for (const { file, dest } of ASSETS) {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${serviceKey}`,
-          'Content-Type': 'image/png',
+          'Content-Type': contentType,
           'x-upsert': 'true',
         },
         body,
@@ -81,9 +83,9 @@ for (const { file, dest } of ASSETS) {
     }
   }
 
-  if (!res!.ok) {
-    const errText = await res!.text();
-    console.error(`Upload failed:`, res!.status, errText);
+  if (!res || !res.ok) {
+    const errText = res ? await res.text() : 'no response';
+    console.error(`Upload failed:`, res?.status, errText);
     if (errText.includes('Bucket not found')) {
       console.error('\nRun: supabase/migrations/20260616000000_campaign_assets_bucket.sql');
     }

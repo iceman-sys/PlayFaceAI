@@ -14,6 +14,7 @@ interface Sub {
   prize_section_viewed?: boolean | null;
   prize_eligible?: boolean | null;
   prize_entered_at?: string | null;
+  swaarm_offer_opt_in?: boolean | null;
   terms_accepted_at?: string | null;
   referral_code?: string | null;
   referred_by_submission_id?: string | null;
@@ -62,6 +63,7 @@ export default function AdminDashboard() {
         'Source',
         'Prize Viewed',
         'Prize Eligible',
+        'SWAARM Offer Opt-in',
         'Prize Entered At',
         'Terms Accepted At',
         'Referral Code',
@@ -80,6 +82,7 @@ export default function AdminDashboard() {
         s.campaign_source || '',
         s.prize_section_viewed ? 'yes' : 'no',
         s.prize_eligible ? 'yes' : 'no',
+        s.swaarm_offer_opt_in ? 'yes' : 'no',
         s.prize_entered_at || '',
         s.terms_accepted_at || '',
         s.referral_code || '',
