@@ -32,6 +32,14 @@ export function friendlyGenerateError(err: unknown): string {
   ) {
     return 'Image generation timed out on the server. The campaign scene file may be too large — ensure afl-group-scene.jpeg (~4 MB) is uploaded to Supabase Storage, not the 31 MB PNG. Then try again.';
   }
+  if (
+    message.includes('Gemini API key rejected') ||
+    message.includes('invalid authentication') ||
+    message.includes('OAuth 2 access token') ||
+    message.includes('GEMINI_API_KEY')
+  ) {
+    return 'Image generation is not configured on the server. The admin needs to add a valid GEMINI_API_KEY in Supabase (Google AI Studio key starting with AIza).';
+  }
   if (message.includes('Asset load failed') && message.includes('afl-group-scene')) {
     return 'Campaign scene image missing from storage. Upload afl-group-scene.jpeg to the campaign-assets bucket (npm run upload:campaign), then try again.';
   }

@@ -26,10 +26,14 @@ export default function PrizeLandingPage() {
 
   return (
     <CampaignShell showJoinCta={false}>
-      <section className="relative">
+      <section className="relative overflow-hidden">
         <div className="absolute inset-0">
-          <img src={CAMPAIGN.heroUrl} alt="" className="w-full h-full object-cover opacity-25" />
-          <div className="absolute inset-0 bg-gradient-to-b from-[#06142e]/50 via-[#06142e]/85 to-[#06142e]" />
+          <img
+            src={CAMPAIGN.heroUrl}
+            alt=""
+            className="w-full h-full object-cover object-center opacity-90 sm:opacity-95"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#06142e]/35 via-[#06142e]/35 to-[#06142e]/95" />
         </div>
         <div className="relative max-w-3xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
           {isStadium && (
