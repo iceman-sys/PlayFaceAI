@@ -31,7 +31,7 @@ export default function PrizeLandingPage() {
           <img
             src={CAMPAIGN.heroUrl}
             alt=""
-            className="w-full h-full object-cover object-center opacity-90 sm:opacity-95"
+            className="w-full h-full object-cover object-center opacity-70 sm:opacity-75"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-[#06142e]/35 via-[#06142e]/35 to-[#06142e]/95" />
         </div>
