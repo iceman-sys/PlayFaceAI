@@ -1,6 +1,6 @@
 # PlayFaceAI — SWAARM in the Chorus
 
-Marketing funnel + AI campaign powered by **Gemini** via **Supabase Edge Functions**.
+Marketing funnel + AI campaign powered by **Replicate face swap** via **Supabase Edge Functions** (async webhook pipeline).
 
 ## Campaign funnel
 
@@ -34,18 +34,48 @@ npm run dev
 
 Open [http://localhost:8080](http://localhost:8080)
 
-## How generation works
+## Client requirement
 
-| Step | UI label | Gemini pass |
-|------|----------|-------------|
-| 1 | Placing you in the team song photo | Face swap (scene + selfie) |
-| 2 | Creating your bare-head version | Strip all caps/helmets from target player |
-| 3 | Fitting your SWAARM headgear | SWAARM scrum cap on bare-head version |
-| 4 | Preparing your share-ready image | Harmonize + upload to Storage |
+Players left → right: **1 · 2 · FAN (3) · 4 · Tristan (5) · 6 · 7**
 
-Each submission returns **two images**: with SWAARM helmet + bare head (face swap only).
+| Mode | Player 3 (fan) | Player 5 (Tristan) | Others |
+|------|----------------|---------------------|--------|
+| **Without headgear** | Your face (swap onto `afl-group-scene.jpeg`) | Unchanged | Unchanged |
+| **With headgear** | Your face (swap onto `afl-group-scene-headgear.jpeg`) | SWAARM cap (pre-fitted) | Unchanged |
 
-Generation runs on **Supabase Edge Functions** (not your local IP) — works regardless of your region.
+## How generation works (two-base-scene async webhook pipeline)
+
+The SWAARM cap is **pre-fitted (baked) into a second base scene** —
+`afl-group-scene-headgear.jpeg` (the fan + Tristan already wear realistic caps).
+Both modes are therefore just a face swap onto the fan, on different base images.
+This removes all runtime helmet compositing (which busted the edge CPU limit and
+never looked realistic). One job fires two predictions in parallel:
+
+```
+1. Client: upload selfie → private Storage (selfies bucket)
+
+2. Client → composite-image (phase=face-swap)
+     • Resolves both pre-baked fan crops + signed selfie URL (no decode)
+     • INSERT generation_jobs (status=swap_processing)
+     • POST 2× Replicate /predictions, each with a variant'd webhook URL:
+         variant=clean    → afl-group-scene.jpeg
+         variant=headgear → afl-group-scene-headgear.jpeg
+     • RETURN { jobId, status: 'queued' }      ← ~300 ms
+
+3. Replicate (off-Supabase) runs both face-swap models.
+
+4. Replicate → replicate-webhook (once per variant, fresh CPU budget)
+     • Downloads swap result + the variant's base scene
+     • Pastes swap into that scene's fan crop rect
+     • Uploads <prefix>-{without|with}-headgear.jpg
+     • UPDATE the matching column; status=complete once BOTH are set
+
+5. Client: polls generation_jobs until BOTH image URLs are set → done.
+```
+
+Calibrate regions:
+- clean scene → `npm run annotate:scene` → check `afl-group-scene-annotated.jpeg`
+- headgear scene → `npm run prepare:headgear-scene` → check `afl-group-headgear-annotated.jpeg`
 
 ## Supabase setup
 
@@ -56,41 +86,59 @@ Generation runs on **Supabase Edge Functions** (not your local IP) — works reg
 - `supabase/migrations/20260615120000_chorus_campaign_upgrade.sql`
 - `supabase/migrations/20260616000000_campaign_assets_bucket.sql`
 - `supabase/migrations/20260628000000_marketing_funnel.sql`
+- `supabase/migrations/20260624100000_campaign_composite.sql` (selfies + generation_jobs)
+- `supabase/migrations/20260625130000_async_replicate.sql` (webhook columns)
+- `supabase/migrations/20260625140000_generation_jobs_authenticated_read.sql` (RLS read)
+- `supabase/migrations/20260626120000_two_scene_variants.sql` (prediction_ids)
 
-### 2. Upload campaign assets (required)
+### 2. Compress, pre-bake & upload campaign assets
 
-Upload your locker-room scene + SWAARM helmet to Storage:
-
-**Option A — Dashboard:** Storage → `campaign-assets` bucket → upload `afl-group-scene.jpeg` (~4 MB) and `swaarm-helmet.png`. Do **not** upload the 31 MB `afl-group-scene.png` — it will crash the edge function.
-
-**Option B — Script:**
 ```bash
-npm run upload:campaign   # needs SUPABASE_SERVICE_ROLE_KEY in .env.local
+npm run optimize:scene          # afl-group-scene.jpeg → <3.5 MB (edge memory)
+npm run prebake:assets          # afl-group-fan-crop.jpg (clean scene swap target)
+npm run prepare:headgear-scene  # afl-group-scene-headgear.jpeg + its fan crop
+npm run annotate:scene          # optional: verify fan + Tristan regions
+npm run upload:campaign         # needs SUPABASE_SERVICE_ROLE_KEY in .env.local
 ```
+
+The "with headgear" base scene is AI-generated with caps pre-fitted on the fan +
+Tristan. Drop that PNG at `public/campaign/afl-group-scene-headgear-source.png`,
+then `npm run prepare:headgear-scene` standardizes it to 2048×1365 and cuts the
+fan crop. Tune `FAN_HEADGEAR` in `scripts/prepare-headgear-scene.mjs` (and
+`FAN_HEADGEAR_REGION` in `regionConfig.ts`) until the red box frames the fan face.
+
+Or upload manually: Storage → `campaign-assets` → `afl-group-scene.jpeg`,
+`afl-group-fan-crop.jpg`, `afl-group-scene-headgear.jpeg`,
+`afl-group-headgear-fan-crop.jpg`.
 
 ### 3. Edge Function secrets
 
 Dashboard → **Edge Functions → Secrets**:
 
 ```
-GEMINI_API_KEY=your_key_from_aistudio.google.com
-GEMINI_HARMONIZE=true
-RESEND_API_KEY=re_...                    # required for email delivery
-RESEND_FROM=SWAARM in the Chorus <promotion@swaarmglobal.com>  # optional; this is the code default
+REPLICATE_API_TOKEN=r8_...                # required
+REPLICATE_WEBHOOK_SECRET=...              # required; openssl rand -hex 32
+REPLICATE_USE_GFPGAN=false                # keep false (extra Replicate pass busts CPU)
+RESEND_API_KEY=re_...                     # optional, for email delivery
+RESEND_FROM=SWAARM in the Chorus <promotion@swaarmglobal.com>
 ```
 
-`promotion@swaarmglobal.com` must be on a domain verified in [Resend](https://resend.com/domains). If unset, `send-result-email` uses that address by default.
-
-`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically.
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically by Supabase.
 
 ### 4. Deploy edge functions
 
 ```bash
 supabase link --project-ref taxdxxjiwdgzrvgfownl
-supabase secrets set GEMINI_API_KEY=your_key
-supabase functions deploy composite-image
-supabase functions deploy send-result-email
+supabase secrets set REPLICATE_API_TOKEN=r8_...
+supabase secrets set REPLICATE_WEBHOOK_SECRET=$(openssl rand -hex 32)
+
+supabase functions deploy composite-image selfie-upload-url
+supabase functions deploy replicate-webhook --no-verify-jwt
+supabase functions deploy send-result-email   # optional
 ```
+
+`--no-verify-jwt` is required for `replicate-webhook` because Replicate calls
+it directly (no Supabase JWT). The URL token + service-role lookup are the auth.
 
 ### 5. Frontend env (`.env.local`)
 
@@ -101,7 +149,7 @@ VITE_SUPABASE_ANON_KEY=eyJ...
 
 ### 6. Admin user
 
-Authentication → Users → create admin, then open `/admin`
+Authentication → Users → create admin, then open `/admin`.
 
 Prize draw: use **Prize draw export** CSV (filters `prize_eligible = true`).
 
@@ -116,11 +164,14 @@ Prize draw: use **Prize draw export** CSV (filters `prize_eligible = true`).
 
 Place in `public/campaign/` and upload to Storage bucket `campaign-assets`:
 
-- `afl-group-scene.jpeg` — locker room team song (~4 MB, used by Gemini)
-- `swaarm-helmet.png` — SWAARM scrum cap
+- `afl-group-scene.jpeg` — clean locker room scene (run `npm run optimize:scene`)
+- `afl-group-fan-crop.jpg` — clean-scene fan head crop (run `npm run prebake:assets`)
+- `afl-group-scene-headgear.jpeg` — caps pre-fitted on fan + Tristan
+- `afl-group-headgear-fan-crop.jpg` — headgear-scene fan head crop
+  (both from `npm run prepare:headgear-scene`)
 
 ```bash
-npm run upload:campaign
+npm run optimize:scene && npm run prebake:assets && npm run prepare:headgear-scene && npm run upload:campaign
 ```
 
 ## Deploy frontend (Vercel)
@@ -136,8 +187,21 @@ VITE_SUPABASE_URL=...
 VITE_SUPABASE_ANON_KEY=...
 ```
 
-Gemini key stays in **Supabase secrets only** — never in Vercel.
+Replicate token + webhook secret stay in **Supabase secrets only** — never in Vercel.
 
 ## Local dev note
 
-`npm run dev` calls your **deployed** Supabase edge functions. Deploy `composite-image` before testing generation. On localhost, scene/helmet assets use CDN fallbacks so the cloud function can fetch them.
+`npm run dev` calls your **deployed** Supabase edge functions. Deploy
+`composite-image`, `selfie-upload-url`, and `replicate-webhook` before testing
+generation. The client polls `generation_jobs` directly via the anon key.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| `WORKER_RESOURCE_LIMIT` / `CPU Time exceeded` on face-swap | Synchronous `replicate.run()` polling — pipeline isn't deployed | Re-deploy `composite-image` + `replicate-webhook` |
+| UI stuck on processing screen, network panel shows `generation_jobs?…` returning `[]` repeatedly | Browser can't read `generation_jobs` (RLS — old policy only granted SELECT to `anon`, not `authenticated`) | Apply `supabase/migrations/20260625140000_generation_jobs_authenticated_read.sql` |
+| UI stuck on processing screen, polls return a row that stays `swap_processing` | Replicate webhook not reaching Supabase | Check `replicate-webhook` deployed with `--no-verify-jwt`; verify `REPLICATE_WEBHOOK_SECRET` matches |
+| `Forbidden` in webhook logs | Replicate posted with wrong token | Re-deploy `composite-image` after rotating `REPLICATE_WEBHOOK_SECRET` |
+| `Scene asset too large` | `afl-group-scene.jpeg` > 3.5 MB in Storage | `npm run optimize:scene && npm run upload:campaign` |
+| Crop misaligned | Scene dimensions don't match `regionConfig.ts` | `npm run annotate:scene`, adjust `regionConfig.ts` |

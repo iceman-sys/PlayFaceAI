@@ -11,6 +11,12 @@
     "preview": "vite preview",
     "setup:models": "node scripts/setup-models.mjs",
     "sync:campaign": "node scripts/sync-campaign-images.mjs",
+    "optimize:scene": "node scripts/optimize-scene.mjs",
+    "annotate:scene": "node scripts/annotate-scene.mjs",
+    "prebake:assets": "node scripts/prebake-assets.mjs",
+    "prepare:headgear-scene": "node scripts/prepare-headgear-scene.mjs",
+    "helmet:cutout": "node scripts/make-helmet-transparent.mjs",
+    "preview:headgear": "node scripts/preview-headgear.mjs",
     "upload:campaign": "node scripts/upload-campaign-assets.mjs"
   },
   "dependencies": {

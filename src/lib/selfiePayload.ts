@@ -28,9 +28,21 @@ export function friendlyGenerateError(err: unknown): string {
   if (
     message.includes('WORKER_RESOURCE_LIMIT') ||
     message.includes('not having enough compute resources') ||
-    message.includes('Scene asset too large')
+    message.toLowerCase().includes('compute resources')
   ) {
-    return 'Image generation timed out on the server. The campaign scene file may be too large — ensure afl-group-scene.jpeg (~4 MB) is uploaded to Supabase Storage, not the 31 MB PNG. Then try again.';
+    return 'Image generation hit a server memory limit. Please try again — face-swap and headgear run as separate steps. If it keeps failing, run `npm run optimize:scene` then `npm run upload:campaign`.';
+  }
+  if (message.includes('Scene asset too large') || message.includes('Scene asset missing')) {
+    return 'The scene image in Supabase Storage is too large or missing. Run `npm run optimize:scene` then `npm run upload:campaign` to upload the compressed afl-group-scene.jpeg (~0.5 MB).';
+  }
+  if (
+    message.includes('REPLICATE_WEBHOOK_SECRET') ||
+    message.includes('Replicate prediction submit failed')
+  ) {
+    return 'The Replicate webhook is not configured on the server. Set REPLICATE_WEBHOOK_SECRET and re-deploy composite-image + replicate-webhook.';
+  }
+  if (message.includes('Face swap is taking longer than expected')) {
+    return message;
   }
   if (
     message.includes('Gemini API key rejected') ||
@@ -38,7 +50,10 @@ export function friendlyGenerateError(err: unknown): string {
     message.includes('OAuth 2 access token') ||
     message.includes('GEMINI_API_KEY')
   ) {
-    return 'Image generation is not configured on the server. The admin needs to add a valid GEMINI_API_KEY in Supabase (Google AI Studio key starting with AIza).';
+    return 'Image generation is not configured on the server. Set REPLICATE_API_TOKEN in Supabase Edge Function secrets.';
+  }
+  if (message.includes('REPLICATE') || message.includes('Replicate')) {
+    return 'Replicate is not configured. Add REPLICATE_API_TOKEN in Supabase → Edge Functions → Secrets.';
   }
   if (message.includes('Asset load failed') && message.includes('afl-group-scene')) {
     return 'Campaign scene image missing from storage. Upload afl-group-scene.jpeg to the campaign-assets bucket (npm run upload:campaign), then try again.';

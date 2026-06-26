@@ -27,6 +27,10 @@ function loadEnv() {
 
 const ASSETS = [
   { file: 'afl-group-scene.jpeg', dest: 'afl-group-scene.jpeg', contentType: 'image/jpeg' },
+  { file: 'afl-group-fan-crop.jpg', dest: 'afl-group-fan-crop.jpg', contentType: 'image/jpeg', optional: true },
+  // Pre-fitted "with headgear" base scene + its own fan crop (two-base-scene method).
+  { file: 'afl-group-scene-headgear.jpeg', dest: 'afl-group-scene-headgear.jpeg', contentType: 'image/jpeg', sizeCheck: true },
+  { file: 'afl-group-headgear-fan-crop.jpg', dest: 'afl-group-headgear-fan-crop.jpg', contentType: 'image/jpeg', optional: true },
   { file: 'swaarm-helmet.png', dest: 'swaarm-helmet.png', contentType: 'image/png' },
   { file: 'swaarm-footer-logo.png', dest: 'swaarm-footer-logo.png', contentType: 'image/png' },
 ];
@@ -50,14 +54,29 @@ if (!serviceKey) {
   process.exit(1);
 }
 
-for (const { file, dest, contentType } of ASSETS) {
+for (const { file, dest, contentType, optional, sizeCheck } of ASSETS) {
   const localPath = path.join(root, 'public', 'campaign', file);
   if (!fs.existsSync(localPath)) {
-    console.warn(`Skipping missing ${localPath}`);
+    if (optional) {
+      console.warn(`Skipping optional ${file} (run \`npm run prebake:assets\` to generate)`);
+    } else {
+      console.warn(`Skipping missing ${localPath}`);
+    }
     continue;
   }
 
   const body = fs.readFileSync(localPath);
+  if (file === 'afl-group-scene.jpeg' || sizeCheck) {
+    const mb = body.length / 1024 / 1024;
+    if (mb > 3.5) {
+      console.error(
+        `${file} is ${mb.toFixed(1)} MB — too large for edge functions.\n` +
+          'Re-run the scene prep script to re-encode it under 3.5 MB.',
+      );
+      process.exit(1);
+    }
+    console.log(`Scene ready (${file}): ${mb.toFixed(2)} MB`);
+  }
   const url = `${supabaseUrl}/storage/v1/object/${bucket}/${dest}`;
 
   console.log(`Uploading ${file} (${(body.length / 1024 / 1024).toFixed(1)} MB)...`);
@@ -95,4 +114,4 @@ for (const { file, dest, contentType } of ASSETS) {
   console.log(`  → ${supabaseUrl}/storage/v1/object/public/${bucket}/${dest}`);
 }
 
-console.log('\nDone. Gemini will use your locker-room scene + SWAARM helmet.');
+console.log('\nDone. Edge function uses locker-room scene + SWAARM helmet from Storage.');
